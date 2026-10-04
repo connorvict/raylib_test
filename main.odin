@@ -6,6 +6,17 @@ import "core:os"
 import rl "vendor:raylib"
 import rgl "vendor:raylib/rlgl"
 
+when ODIN_OS == .Darwin {
+	foreign import desktop_gl "system:OpenGL.framework"
+} else when ODIN_OS == .Windows {
+	foreign import desktop_gl "system:opengl32.lib"
+} else {
+	foreign import desktop_gl "system:GL"
+}
+foreign desktop_gl {
+	glGetIntegerv :: proc "system" (pname: u32, data: ^i32) ---
+}
+
 INTER_REGULAR :: #load("assets/fonts/Inter-Regular.ttf", []u8)
 INTER_SEMIBOLD :: #load("assets/fonts/Inter-SemiBold.ttf", []u8)
 
@@ -98,10 +109,8 @@ main :: proc() {
 	rl.SetWindowMinSize(1100, 720)
 	rl.SetTargetFPS(60)
 
-	get_integer := cast(proc "c" (u32, ^i32))(rgl.GetProcAddress("glGetIntegerv"))
-	assert(get_integer != nil)
 	samples: i32
-	get_integer(0x80A9, &samples) // GL_SAMPLES, on the default framebuffer.
+	glGetIntegerv(0x80A9, &samples) // GL_SAMPLES, on the default framebuffer.
 	fmt.printf("Default framebuffer: %d MSAA samples\n", samples)
 	if samples < 4 {fmt.eprintln("Warning: the driver did not provide the requested 4x MSAA.")}
 	if smoke {assert(samples >= 4, "4x MSAA unavailable")}

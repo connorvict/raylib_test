@@ -32,7 +32,7 @@ The window is resizable, with a 1100 × 720 minimum.
 
 ## Rendering and typography
 
-- `MSAA_4X_HINT` is set **before** `InitWindow`. The scene, UI shapes, and text draw directly to the window framebuffer, not a single-sample render texture. Startup queries the actual OpenGL sample count; a warning and on-screen notice appear if the driver cannot supply four samples.
+- `MSAA_4X_HINT` is set **before** `InitWindow`. The scene, UI shapes, and text draw directly to the window framebuffer, not a single-sample render texture. Startup queries the actual sample count directly from the platform OpenGL library (`OpenGL.framework` on macOS), without requiring `rlgl.GetProcAddress` in Odin's bindings; a warning and on-screen notice appear if the driver cannot supply four samples.
 - MSAA smooths geometry edges; it does not fix a low-resolution font atlas. Inter is rasterized separately for each displayed type size, at `GetRenderHeight() / GetScreenHeight()` density. Atlases rebuild when that ratio changes.
 - Text uses existing antialiased glyph coverage, point filtering, zero extra letter spacing, and pixel-snapped positions. Each atlas texel maps to a framebuffer pixel instead of enlarging Raylib's default bitmap font. `WINDOW_HIGHDPI` is enabled; OS/compositor scaling support still depends on the Raylib backend.
 - `TYPE_SIZES` owns typography; `PAPER`, `INK`, `MUTED`, `RULE`, and `TEAL` own the shared UI palette. Screen coordinates are logical pixels; exhibit labels are projected from world coordinates.

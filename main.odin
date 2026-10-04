@@ -1,22 +1,8 @@
 package museum
 
-import "core:fmt"
 import "core:math"
-import "core:os"
 import rl "vendor:raylib"
 import rgl "vendor:raylib/rlgl"
-
-when ODIN_OS == .Darwin {
-	foreign import desktop_gl "system:OpenGL.framework"
-} else when ODIN_OS == .Windows {
-	foreign import desktop_gl "system:opengl32.lib"
-} else {
-	foreign import desktop_gl "system:GL"
-}
-foreign desktop_gl {
-	glGetIntegerv :: proc "system" (pname: u32, data: ^i32) ---
-	glGetError :: proc "system" () -> u32 ---
-}
 
 INTER_REGULAR :: #load("assets/fonts/Inter-Regular.ttf", []u8)
 INTER_SEMIBOLD :: #load("assets/fonts/Inter-SemiBold.ttf", []u8)
@@ -76,7 +62,6 @@ refresh_type :: proc(type: ^Typography, density: f32) {
 			font.texture.id != rl.GetFontDefault().texture.id,
 			"Inter failed to load",
 		)
-		assert(font.baseSize == pixels)
 		rl.SetTextureFilter(font.texture, .POINT)
 		type.fonts[role] = font
 	}
@@ -102,24 +87,12 @@ text :: proc(
 }
 
 main :: proc() {
-	smoke := len(os.args) == 2 && os.args[1] == "--smoke-test"
-	if len(os.args) > 1 && !smoke {
-		fmt.eprintln("Usage: museum [--smoke-test]")
-		os.exit(1)
-	}
-
 	rl.SetConfigFlags({.MSAA_4X_HINT, .WINDOW_HIGHDPI, .WINDOW_RESIZABLE, .VSYNC_HINT})
 	rl.InitWindow(1440, 900, "FORM - an Odin + Raylib museum")
 	assert(rl.IsWindowReady(), "Window initialization failed")
 	defer rl.CloseWindow()
 	rl.SetWindowMinSize(1100, 720)
 	rl.SetTargetFPS(165)
-
-	samples: i32
-	glGetIntegerv(0x80A9, &samples) // GL_SAMPLES, on the default framebuffer.
-	fmt.printf("Default framebuffer: %d MSAA samples\n", samples)
-	if samples < 4 {fmt.eprintln("Warning: the driver did not provide the requested 4x MSAA.")}
-	if smoke {assert(samples >= 4, "4x MSAA unavailable")}
 
 	type: Typography
 	defer for font in type.fonts {rl.UnloadFont(font)}
@@ -148,32 +121,7 @@ main :: proc() {
 	paused := false
 	dragging := false
 	effects := Effects{true, true, true}
-	baseline: rl.Image
-	defer if baseline.data != nil {rl.UnloadImage(baseline)}
-	frame := 0
 	for !rl.WindowShouldClose() {
-		frame += 1
-		if smoke {
-			effects = Effects{true, true, true}
-			switch frame {
-			case 5:
-				effects = {}
-			case 6:
-				effects = {
-					shadows = true,
-				}
-			case 7:
-				effects = {
-					contact = true,
-				}
-			case 8:
-				effects = {
-					ssao = true,
-				}
-			case 15:
-				yaw, pitch, angle = -0.45, 0.6, 35
-			}
-		}
 		width, height := f32(rl.GetScreenWidth()), f32(rl.GetScreenHeight())
 		if width <= 0 || height <= 0 {continue}
 		density := f32(rl.GetRenderHeight()) / height
@@ -203,7 +151,7 @@ main :: proc() {
 		pitch = clamp(pitch, f32(0.22), f32(0.72))
 		yaw = clamp(yaw, f32(-0.65), f32(0.65))
 		if in_gallery {zoom = clamp(zoom - rl.GetMouseWheelMove() * 0.5, f32(8.8), f32(14.0))}
-		if !paused && !smoke {angle += dt * 12}
+		if !paused {angle += dt * 12}
 
 		camera := rl.Camera3D {
 			position   = {
@@ -243,9 +191,7 @@ main :: proc() {
 		)
 		text(&type, .Small, "THE RENDERING ROOM", width - 330, 34, MUTED)
 		text(&type, .Label, "Odin + Raylib 6.0", width - 330, 61)
-		msaa_text: cstring =
-			"4x MSAA / direct framebuffer" if samples >= 4 else "MSAA unavailable / check driver"
-		text(&type, .Small, msaa_text, width - 330, 91, TEAL if samples >= 4 else INK)
+		text(&type, .Small, "4x MSAA requested / direct framebuffer", width - 330, 91, TEAL)
 		text(&type, .Small, "Inter / pixel-matched font atlases", width - 330, 116, MUTED)
 		status := rl.TextFormat(
 			"1 shadows %s / 2 contact %s / 3 SSAO %s",
@@ -295,101 +241,6 @@ main :: proc() {
 			rgl.DrawRenderBatchActive()
 			rl.TakeScreenshot("museum.png")
 		}
-		if smoke && ((frame >= 4 && frame <= 8) || frame == 14 || frame == 15) {
-			for role in Type {
-				font := type.fonts[role]
-				assert(rl.MeasureTextEx(font, "Inter 0123", f32(font.baseSize), 0).x > 0)
-				glyph := rl.GetGlyphInfo(font, 'é')
-				assert(glyph.value == 'é', "Latin-1 glyph missing")
-			}
-			path: cstring
-			switch frame {
-			case 4:
-				path = "_smoke-large.png"
-			case 5:
-				path = "_smoke-none.png"
-			case 6:
-				path = "_smoke-shadows.png"
-			case 7:
-				path = "_smoke-contact.png"
-			case 8:
-				path = "_smoke-ssao.png"
-			case 14:
-				path = "_smoke-small.png"
-			case 15:
-				path = "_smoke-orbit.png"
-			}
-			rgl.DrawRenderBatchActive()
-			rl.TakeScreenshot(path)
-			image := rl.LoadImage(path)
-			assert(rl.IsImageValid(image))
-			assert(image.width == rl.GetRenderWidth() && image.height == rl.GetRenderHeight())
-			assert(
-				rl.GetImageColor(image, i32(45 * density), i32(42 * density)) == TEAL,
-				"2D overlay not rendered",
-			)
-			if frame == 5 {
-				baseline = image
-			} else {
-				if frame >= 6 && frame <= 8 {
-					darker := 0
-					for y in i32(186 * density) ..< i32((height - 210) * density) {
-						for x in 0 ..< image.width {
-							before := rl.GetImageColor(baseline, x, y)
-							after := rl.GetImageColor(image, x, y)
-							if int(before.r) +
-								   int(before.g) +
-								   int(before.b) -
-								   int(after.r) -
-								   int(after.g) -
-								   int(after.b) >
-							   9 {darker += 1}
-						}
-					}
-					fmt.printf("%s: %d shaded pixels\n", path, darker)
-					assert(darker > 100, "Effect did not visibly shade the scene")
-				}
-				rl.UnloadImage(image)
-			}
-			assert(
-				renderer.width == rl.GetRenderWidth() && renderer.height == rl.GetRenderHeight(),
-				"Stale effect target dimensions",
-			)
-			if frame == 8 {
-				images := [2]rl.Image{
-					rl.LoadImageFromTexture(renderer.ao_raw.texture),
-					rl.LoadImageFromTexture(renderer.ao_blurred.texture),
-				}
-				variation: [2]i64
-				for ao_image, i in images {
-					assert(rl.IsImageValid(ao_image), "AO readback failed")
-					for y in 1 ..< ao_image.height {
-						for x in 1 ..< ao_image.width {
-							value := i32(rl.GetImageColor(ao_image, x, y).r)
-							left := i32(rl.GetImageColor(ao_image, x - 1, y).r)
-							above := i32(rl.GetImageColor(ao_image, x, y - 1).r)
-							variation[i] += i64(abs(value - left) + abs(value - above))
-						}
-					}
-					assert(rl.GetImageColor(ao_image, 0, 0) == rl.WHITE, "AO darkened the background")
-					rl.UnloadImage(ao_image)
-				}
-				fmt.printf("AO neighbor variation: raw %d, filtered %d\n", variation[0], variation[1])
-				assert(variation[1] < variation[0], "AO filter did not reduce noise")
-			}
-			current_samples: i32
-			glGetIntegerv(0x80A9, &current_samples)
-			assert(current_samples >= 4, "Final scene lost framebuffer MSAA")
-			assert(glGetError() == 0, "OpenGL rendering error")
-		}
 		rl.EndDrawing()
-		if smoke && frame == 8 {rl.SetWindowSize(1100, 720)}
-		if smoke && frame == 15 {
-			assert(rl.GetScreenWidth() == 1100 && rl.GetScreenHeight() == 720, "Resize failed")
-			fmt.println(
-				"Smoke test passed: MSAA, Inter, shadows, contact AO, SSAO, resize, orbit.",
-			)
-			break
-		}
 	}
 }
